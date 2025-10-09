@@ -16,7 +16,6 @@ male = set(male_names['first_names'])
 
 def calculate_k_anonymity(df, quasi_cols):
     rows = {}
-    print(df.columns)
     for quasi in quasi_cols:
         if quasi == 'ФИО':
             quasi_cols[quasi_cols.index(quasi)] = 'fio'
@@ -50,6 +49,8 @@ def calculate_k_anonymity(df, quasi_cols):
     sizes = list(rows.values())
     sizes.sort()
     min_k = sizes[0] if sizes else 0
+    rows = [item for item in rows.items()]
+    print(rows)
     return min_k, sizes
 
 class DepersonalizatorUI:
@@ -216,12 +217,8 @@ class DepersonalizatorUI:
         
         try:
             df = pd.read_excel(file)
-            print(df.head())
             mapping = self.get_column_mapping()
-            print("Selected quasi-identifiers:", selected_quasi)
             quasi_cols = [mapping.get(label, label) for label in selected_quasi]
-            print("Mapped quasi-identifiers:", quasi_cols)
-            print("Quasi columns for k-anonymity:", quasi_cols)
             min_k, sorted_groups = calculate_k_anonymity(df, quasi_cols)
             
             total_records = len(df)

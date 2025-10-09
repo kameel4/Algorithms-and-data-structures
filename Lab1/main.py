@@ -20,12 +20,12 @@ def generate_fio():
     return f"{last_name} {first_name} {patronymic}"
 
 def generate_passport():
-    year = str(random.randint(0, 25)).zfill(2)
+    year = str(random.randint(0, 19)).zfill(2)
     series = str(random.randint(10, 99))
     number = str(random.randint(100000, 999999))
     passport = f"{series}{year} {number}"
     while passport in passports:
-        year = str(random.randint(0, 25)).zfill(2)
+        year = str(random.randint(0, 19)).zfill(2)
         series = str(random.randint(10, 99))
         number = str(random.randint(100000, 999999))
         passport = f"{series}{year} {number}"
@@ -140,7 +140,7 @@ def generate_dataset(lines, lobby_size=300):
         hours = (tr['arrival_time'] - tr['departure_time']).total_seconds() / 3600
         price = hours * tr['price_per_hour'] * coach['price_multiplier']
 
-        card = generate_credit_cards(40, 30, 10, 20, 40, 30, 20, 10)
+        card = generate_credit_cards(40, 30, 10, 20, 25, 25, 25, 25)
         passport = generate_passport()
 
         data.append({
@@ -159,7 +159,7 @@ def generate_dataset(lines, lobby_size=300):
     print("generated")
     return data
 
-dataset = generate_dataset(50000)
+dataset = generate_dataset(100000)
 df = pd.DataFrame(dataset)
 
 end_time = time.time()
