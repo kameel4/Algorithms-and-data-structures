@@ -1,7 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
-from math import atan2, degrees
 
 # Assuming the used_data modules are available as per the provided code
 from used_data.female import female_names
@@ -147,8 +146,8 @@ class DepersonalizatorUI:
         anonymize_button = ttk.Button(button_frame, text="Деперсонализировать", command=self.anonymize)
         anonymize_button.grid(row=0, column=1, padx=5)
         
-        save_button = ttk.Button(button_frame, text="Сохранить датасет", command=self.save)
-        save_button.grid(row=0, column=2, padx=5)
+        # save_button = ttk.Button(button_frame, text="Сохранить датасет", command=self.save)
+        # save_button.grid(row=0, column=2, padx=5)
         
         exit_button = ttk.Button(button_frame, text="Выход", command=self.root.quit)
         exit_button.grid(row=0, column=3, padx=5)
