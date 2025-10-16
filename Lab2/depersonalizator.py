@@ -73,29 +73,30 @@ def get_direction(departure_city, arrival_city):
 def get_year_month(time_str):
     if pd.isna(time_str):
         return ''
-    # year = time_str[:4]
-    # month = time_str[5:7]
-    # seasons = {
-    #     '01':"зима",
-    #     '02':"зима",
-    #     '03':"весна",
-    #     '04':"весна",
-    #     '05':"весна",
-    #     '06':"лето",
-    #     '07':"лето",
-    #     '08':'лето',
-    #     '09':'осень',
-    #     '10':'осень',
-    #     '11':'осень',
-    #     '12':'зима'
-    #     }
-    # season = seasons[month]
-    hours = int(time_str[11:13])
-    if 0 <= hours < 12:
-        time = 'утро'
-    else:
-        time = 'вечер'
-    return time  # "YYYY-MM"
+    year = time_str[:4]
+    month = time_str[5:7]
+    seasons = {
+        '01':"зима",
+        '02':"зима",
+        '03':"весна",
+        '04':"весна",
+        '05':"весна",
+        '06':"лето",
+        '07':"лето",
+        '08':'лето',
+        '09':'осень',
+        '10':'осень',
+        '11':'осень',
+        '12':'зима'
+        }
+    season = seasons[month]
+    return season
+    # hours = int(time_str[11:13])
+    # if 0 <= hours < 12:
+    #     time = 'утро'
+    # else:
+    #     time = 'вечер'
+    # return time  # "YYYY-MM"
 
 def get_price_range(price):
     if price < 7000:
@@ -185,6 +186,6 @@ def depersonalize(path):
                     'departure_city', 'arrival_city', 'departure_time', 'arrival_time', 'price_range']]
 
     df_reordered.to_excel('Lab2/anonymized_dataset.xlsx', index=False)
-    anonymized_path = os.path.join(os.path.dirname(path), 'anonymized_' + os.path.basename(path))
-    df_reordered.to_excel(anonymized_path, index=False)
+    # anonymized_path = os.path.join(os.path.dirname(path), 'anonymized_' + os.path.basename(path))
+    # df_reordered.to_excel(anonymized_path, index=False)
     
