@@ -1,0 +1,1 @@
+    print("md4" in hashlib.algorithms_available)

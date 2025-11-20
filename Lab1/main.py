@@ -20,7 +20,7 @@ def generate_fio():
     return f"{last_name} {first_name} {patronymic}"
 
 def generate_passport():
-    year = str(random.randint(0, 19)).zfill(2)
+    year = str(random.randint(0, 25)).zfill(2)
     series = str(random.randint(10, 99))
     number = str(random.randint(100000, 999999))
     passport = f"{series}{year} {number}"
@@ -159,13 +159,13 @@ def generate_dataset(lines, lobby_size=300):
     print("generated")
     return data
 
-dataset = generate_dataset(100000)
+dataset = generate_dataset(250000)
 df = pd.DataFrame(dataset)
 
 end_time = time.time()
 execution_time = end_time - start_time
 
-file_path = os.path.join(os.getcwd(), 'passengers_dataset.xlsx')
+file_path = os.path.join(os.getcwd(), 'passengers_dataset_large.xlsx')
 df.to_excel(file_path, index=False)
 
 print(f"Время выполнения: {execution_time:.2f} секунд")
