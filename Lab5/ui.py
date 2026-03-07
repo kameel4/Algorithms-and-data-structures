@@ -7,9 +7,11 @@ from matplotlib.animation import FuncAnimation
 
 try:
     from .ga import run_ga, run_ga_bitwise
+    from .history_files import save_run_histories
     from .pso import run_pso
 except ImportError:
     from ga import run_ga, run_ga_bitwise
+    from history_files import save_run_histories
     from pso import run_pso
 
 
@@ -197,7 +199,7 @@ def run_interface(
 
     root = tk.Tk()
     root.title("Lab5 optimization controls")
-    root.geometry("420x760")
+    root.geometry("420x820")
 
     panel = ttk.Frame(root, padding=12)
     panel.pack(anchor="nw", fill="both", expand=True)
@@ -249,6 +251,24 @@ def run_interface(
     row += 1
 
     ttk.Label(panel, text="PSO", font=("Segoe UI", 10, "bold")).grid(row=row, column=0, columnspan=2, sticky="w")
+    row += 1
+
+    pso_mode_var = tk.StringVar(value="constriction")
+    ttk.Label(panel, text="PSO mode").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=2)
+    pso_mode_frame = ttk.Frame(panel)
+    pso_mode_frame.grid(row=row, column=1, sticky="w", pady=2)
+    ttk.Radiobutton(
+        pso_mode_frame,
+        text="With constriction",
+        value="constriction",
+        variable=pso_mode_var,
+    ).pack(anchor="w")
+    ttk.Radiobutton(
+        pso_mode_frame,
+        text="Standard (no constriction)",
+        value="standard",
+        variable=pso_mode_var,
+    ).pack(anchor="w")
     row += 1
 
     pso_swarm_size_var, _ = _add_labeled_entry(panel, row, "PSO swarm_size", 512)
@@ -341,6 +361,7 @@ def run_interface(
             pso_c2 = _parse_float(pso_c2_var.get(), "PSO c2")
             pso_vmax_ratio = _parse_float(pso_vmax_var.get(), "PSO vmax_ratio", min_value=0.0)
             pso_seed = _parse_int(pso_seed_var.get(), "PSO seed")
+            pso_mode = pso_mode_var.get()
 
             pso_result = run_pso(
                 fitness=fitness,
@@ -350,12 +371,20 @@ def run_interface(
                 c1=pso_c1,
                 c2=pso_c2,
                 vmax_ratio=pso_vmax_ratio,
+                use_constriction=(pso_mode == "constriction"),
                 seed=pso_seed,
             )
 
             print("=== Results ===")
             print(f"GA : f = {ga_result['best_value']:.6f}, point = {ga_result['best_point']}")
             print(f"PSO: f = {pso_result['best_value']:.6f}, point = {pso_result['best_point']}")
+
+            saved_paths = save_run_histories(
+                [ga_result, pso_result],
+                bounds=bounds_value,
+            )
+            for saved_path in saved_paths:
+                print(f"History saved: {saved_path}")
 
             visualize_comparison(
                 ga_result=ga_result,
@@ -366,7 +395,7 @@ def run_interface(
             )
 
             last_result["value"] = (ga_result, pso_result)
-            status_var.set("Finished.")
+            status_var.set("Finished. History files saved.")
         except Exception as exc:  # noqa: BLE001
             status_var.set("Failed. Check inputs.")
             messagebox.showerror("Run error", str(exc))

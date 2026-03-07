@@ -1,5 +1,10 @@
 import numpy as np
 
+try:
+    from .initialization import make_uniform_points
+except ImportError:
+    from initialization import make_uniform_points
+
 _DEFAULT_BIT_WIDTH = 16
 
 
@@ -150,7 +155,7 @@ def run_ga(
     rng = np.random.default_rng(seed)
     low, high = bounds
 
-    pop = rng.uniform(low, high, size=(pop_size, 2))
+    pop = make_uniform_points(pop_size, bounds=bounds)
     fit = fitness(pop)
 
     history_positions = [pop.copy()]
@@ -224,8 +229,8 @@ def run_ga_bitwise(
     bit_max = _bit_max(bit_width)
     dtype = _resolve_uint_dtype(bit_width)
 
-    pop = rng.integers(0, bit_max + 1, size=(pop_size, 2), dtype=dtype)
-    points = decode_gray_population(pop, bounds=bounds, bit_width=bit_width)
+    points = make_uniform_points(pop_size, bounds=bounds)
+    pop = encode_points_to_gray(points, bounds=bounds, bit_width=bit_width).astype(dtype, copy=False)
     fit = fitness(points)
 
     history_positions = [points.copy()]

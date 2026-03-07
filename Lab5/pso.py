@@ -1,5 +1,22 @@
 import numpy as np
 
+try:
+    from .initialization import make_uniform_points
+except ImportError:
+    from initialization import make_uniform_points
+
+
+def _clip_velocity_norm(velocity, vmax):
+    if vmax <= 0:
+        return np.zeros_like(velocity)
+
+    norms = np.linalg.norm(velocity, axis=1, keepdims=True)
+    mask = norms[:, 0] > vmax
+    if np.any(mask):
+        velocity = velocity.copy()
+        velocity[mask] *= vmax / norms[mask]
+    return velocity
+
 
 def run_pso(
     fitness,
@@ -9,13 +26,14 @@ def run_pso(
     c1=2.05,
     c2=2.05,
     vmax_ratio=0.2,
+    use_constriction=True,
     seed=7,
 ):
     rng = np.random.default_rng(seed)
     low, high = bounds
     span = high - low
 
-    x = rng.uniform(low, high, size=(swarm_size, 2))
+    x = make_uniform_points(swarm_size, bounds=bounds)
     v = rng.uniform(-span * 0.05, span * 0.05, size=(swarm_size, 2))
 
     pbest = x.copy()
@@ -25,9 +43,12 @@ def run_pso(
     gbest_val = float(pbest_val[g_idx])
 
     phi = c1 + c2
-    if phi <= 4.0:
-        raise ValueError("Для коэффициента сжатия нужно c1 + c2 > 4.")
-    chi = 2.0 / abs(2.0 - phi - np.sqrt(phi**2 - 4.0 * phi))
+    if use_constriction:
+        if phi <= 4.0:
+            raise ValueError("For constriction mode, c1 + c2 must be > 4.")
+        chi = 2.0 / abs(2.0 - phi - np.sqrt(phi**2 - 4.0 * phi))
+    else:
+        chi = 1.0
 
     vmax = vmax_ratio * span
 
@@ -43,7 +64,7 @@ def run_pso(
         cognitive = c1 * r1 * (pbest - x)
         social = c2 * r2 * (gbest - x)
         v = chi * (v + cognitive + social)
-        v = np.clip(v, -vmax, vmax)
+        v = _clip_velocity_norm(v, vmax)
         x = x + v
 
         for d in range(2):
@@ -77,6 +98,6 @@ def run_pso(
         "history_best": history_best,
         "history_best_point": history_best_point,
         "history_mean": history_mean,
-        "name": "PSO (с коэффициентом сжатия)",
+        "name": "PSO (with constriction)" if use_constriction else "PSO (standard, no constriction)",
     }
     return result
