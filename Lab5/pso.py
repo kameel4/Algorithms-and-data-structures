@@ -1,9 +1,9 @@
 import numpy as np
 
 try:
-    from .initialization import make_uniform_points
+    from .initialization import make_initial_points
 except ImportError:
-    from initialization import make_uniform_points
+    from initialization import make_initial_points
 
 
 def _clip_velocity_norm(velocity, vmax):
@@ -28,12 +28,13 @@ def run_pso(
     vmax_ratio=0.2,
     use_constriction=True,
     seed=7,
+    init_mode="grid",
 ):
     rng = np.random.default_rng(seed)
     low, high = bounds
     span = high - low
 
-    x = make_uniform_points(swarm_size, bounds=bounds)
+    x = make_initial_points(swarm_size, bounds=bounds, mode=init_mode, rng=rng)
     v = rng.uniform(-span * 0.05, span * 0.05, size=(swarm_size, 2))
 
     pbest = x.copy()

@@ -236,15 +236,15 @@ def run_interface(
     row += 1
     ga_mutation_var, _ = _add_labeled_entry(panel, row, "GA mutation_prob", 0.30)
     row += 1
-    ga_elite_var, _ = _add_labeled_entry(panel, row, "GA elite_size", 2)
+    ga_elite_var, _ = _add_labeled_entry(panel, row, "GA elite_size", 8)
     row += 1
-    ga_tournament_var, _ = _add_labeled_entry(panel, row, "GA tournament_k", 5)
+    ga_tournament_var, _ = _add_labeled_entry(panel, row, "GA tournament_k", 2)
     row += 1
     ga_sigma_var, ga_sigma_entry = _add_labeled_entry(panel, row, "GA sigma0", 35.0)
     row += 1
     ga_seed_var, _ = _add_labeled_entry(panel, row, "GA seed", 123)
     row += 1
-    ga_bit_width_var, ga_bit_width_entry = _add_labeled_entry(panel, row, "GA bit width (B)", 16)
+    ga_bit_width_var, ga_bit_width_entry = _add_labeled_entry(panel, row, "GA bit width (B)", 32)
     row += 1
 
     ttk.Separator(panel, orient="horizontal").grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)

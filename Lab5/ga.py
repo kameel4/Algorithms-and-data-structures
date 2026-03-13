@@ -1,9 +1,9 @@
 import numpy as np
 
 try:
-    from .initialization import make_uniform_points
+    from .initialization import make_initial_points
 except ImportError:
-    from initialization import make_uniform_points
+    from initialization import make_initial_points
 
 _DEFAULT_BIT_WIDTH = 16
 
@@ -151,11 +151,12 @@ def run_ga(
     tournament_k=3,
     sigma0=30.0,
     seed=42,
+    init_mode="grid",
 ):
     rng = np.random.default_rng(seed)
     low, high = bounds
 
-    pop = make_uniform_points(pop_size, bounds=bounds)
+    pop = make_initial_points(pop_size, bounds=bounds, mode=init_mode, rng=rng)
     fit = fitness(pop)
 
     history_positions = [pop.copy()]
@@ -221,6 +222,7 @@ def run_ga_bitwise(
     tournament_k=3,
     bit_width=_DEFAULT_BIT_WIDTH,
     seed=42,
+    init_mode="grid",
 ):
     if bit_width < 2 or bit_width > 32:
         raise ValueError("bit_width must be in [2, 32].")
@@ -229,7 +231,7 @@ def run_ga_bitwise(
     bit_max = _bit_max(bit_width)
     dtype = _resolve_uint_dtype(bit_width)
 
-    points = make_uniform_points(pop_size, bounds=bounds)
+    points = make_initial_points(pop_size, bounds=bounds, mode=init_mode, rng=rng)
     pop = encode_points_to_gray(points, bounds=bounds, bit_width=bit_width).astype(dtype, copy=False)
     fit = fitness(points)
 
