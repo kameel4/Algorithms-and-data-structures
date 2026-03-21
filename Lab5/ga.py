@@ -6,6 +6,7 @@ except ImportError:
     from initialization import make_initial_points
 
 _DEFAULT_BIT_WIDTH = 16
+_DEFAULT_BOUNDS = (-512, 512)
 
 
 def _bit_max(bit_width):
@@ -75,7 +76,7 @@ def gray_to_binary_uint16(gray_values):
     return gray_to_binary(values, bit_width=16).astype(np.uint16, copy=False)
 
 
-def encode_points_to_gray(points, bounds=(-515, 515), bit_width=_DEFAULT_BIT_WIDTH):
+def encode_points_to_gray(points, bounds=_DEFAULT_BOUNDS, bit_width=_DEFAULT_BIT_WIDTH):
     if bit_width < 2 or bit_width > 32:
         raise ValueError("bit_width must be in [2, 32].")
 
@@ -91,7 +92,7 @@ def encode_points_to_gray(points, bounds=(-515, 515), bit_width=_DEFAULT_BIT_WID
     return binary_to_gray(binary_values).astype(dtype, copy=False)
 
 
-def decode_gray_population(gray_population, bounds=(-515, 515), bit_width=_DEFAULT_BIT_WIDTH):
+def decode_gray_population(gray_population, bounds=_DEFAULT_BOUNDS, bit_width=_DEFAULT_BIT_WIDTH):
     if bit_width < 2 or bit_width > 32:
         raise ValueError("bit_width must be in [2, 32].")
 
@@ -125,7 +126,42 @@ def midpoint_bitwise_crossover(parent1, parent2, bit_width=_DEFAULT_BIT_WIDTH):
     return child1.astype(dtype, copy=False), child2.astype(dtype, copy=False)
 
 
-def bit_flip_mutation(ind, bit_width=_DEFAULT_BIT_WIDTH, rng=None):
+def adaptive_bitwise_crossover(parent1, parent2, bit_width=_DEFAULT_BIT_WIDTH, rng=None):
+    if bit_width < 2 or bit_width > 32:
+        raise ValueError("bit_width must be in [2, 32].")
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    p1 = np.asarray(parent1)
+    p2 = np.asarray(parent2)
+    dtype = p1.dtype
+    bit_max = _bit_max(bit_width)
+
+    child1 = p1.copy()
+    child2 = p2.copy()
+    for d in range(2):
+        cut = int(rng.integers(1, bit_width))
+        low_mask = (1 << cut) - 1
+        high_mask = bit_max ^ low_mask
+        low_mask = dtype.type(low_mask)
+        high_mask = dtype.type(high_mask)
+        child1[d] = (p1[d] & high_mask) | (p2[d] & low_mask)
+        child2[d] = (p2[d] & high_mask) | (p1[d] & low_mask)
+
+    return child1.astype(dtype, copy=False), child2.astype(dtype, copy=False)
+
+
+def _mutation_bit_window(bit_width, progress):
+    min_window = min(bit_width, 4)
+    span = bit_width - min_window
+    if span <= 0:
+        return bit_width
+    scaled = (1.0 - progress) ** 1.6
+    return int(min_window + np.ceil(span * scaled))
+
+
+def bit_flip_mutation(ind, bit_width=_DEFAULT_BIT_WIDTH, rng=None, progress=0.0):
     if bit_width < 2 or bit_width > 32:
         raise ValueError("bit_width must be in [2, 32].")
 
@@ -133,16 +169,48 @@ def bit_flip_mutation(ind, bit_width=_DEFAULT_BIT_WIDTH, rng=None):
         rng = np.random.default_rng()
 
     mutated = ind.copy()
+    active_bits = _mutation_bit_window(bit_width, progress)
+    extra_flip_prob = 0.35 * max(0.0, 1.0 - progress)
+
     for d in range(2):
-        bit_idx = int(rng.integers(0, bit_width))
-        mutated[d] = mutated.dtype.type(mutated[d] ^ mutated.dtype.type(1 << bit_idx))
+        flip_count = 1 + int(active_bits > 1 and rng.random() < extra_flip_prob)
+        flip_count = min(flip_count, active_bits)
+        bit_indices = np.atleast_1d(rng.choice(active_bits, size=flip_count, replace=False))
+
+        mask = 0
+        for bit_idx in bit_indices:
+            mask ^= 1 << int(bit_idx)
+        mutated[d] = mutated.dtype.type(mutated[d] ^ mutated.dtype.type(mask))
 
     return mutated
 
 
+def _refine_best_gray_individual(individual, fitness, bounds, bit_width):
+    candidate = np.asarray(individual).copy()
+    point = decode_gray_population(candidate[None, :], bounds=bounds, bit_width=bit_width)[0]
+    best_value = float(fitness(point[None, :])[0])
+
+    improved = True
+    while improved:
+        improved = False
+        for d in range(2):
+            for bit_idx in range(bit_width):
+                trial = candidate.copy()
+                trial[d] = trial.dtype.type(trial[d] ^ trial.dtype.type(1 << bit_idx))
+                trial_point = decode_gray_population(trial[None, :], bounds=bounds, bit_width=bit_width)[0]
+                trial_value = float(fitness(trial_point[None, :])[0])
+                if trial_value < best_value:
+                    candidate = trial
+                    point = trial_point
+                    best_value = trial_value
+                    improved = True
+
+    return candidate, point, best_value
+
+
 def run_ga(
     fitness,
-    bounds=(-515, 515),
+    bounds=_DEFAULT_BOUNDS,
     pop_size=80,
     generations=120,
     crossover_prob=0.9,
@@ -213,7 +281,7 @@ def run_ga(
 
 def run_ga_bitwise(
     fitness,
-    bounds=(-515, 515),
+    bounds=_DEFAULT_BOUNDS,
     pop_size=80,
     generations=120,
     crossover_prob=0.9,
@@ -228,7 +296,6 @@ def run_ga_bitwise(
         raise ValueError("bit_width must be in [2, 32].")
 
     rng = np.random.default_rng(seed)
-    bit_max = _bit_max(bit_width)
     dtype = _resolve_uint_dtype(bit_width)
 
     points = make_initial_points(pop_size, bounds=bounds, mode=init_mode, rng=rng)
@@ -240,23 +307,25 @@ def run_ga_bitwise(
     history_best_point = [points[np.argmin(fit)].copy()]
     history_mean = [fit.mean()]
 
-    for _ in range(generations):
+    for gen in range(generations):
+        progress = gen / max(1, generations - 1)
         elite_idx = np.argsort(fit)[:elite_size]
         new_pop = [pop[i].copy() for i in elite_idx]
+        current_mutation_prob = mutation_prob * (0.15 + 0.85 * ((1.0 - progress) ** 1.25))
 
         while len(new_pop) < pop_size:
             p1 = tournament_selection(pop, fit, k=tournament_k, rng=rng)
             p2 = tournament_selection(pop, fit, k=tournament_k, rng=rng)
 
             if rng.random() < crossover_prob:
-                c1, c2 = midpoint_bitwise_crossover(p1, p2, bit_width=bit_width)
+                c1, c2 = adaptive_bitwise_crossover(p1, p2, bit_width=bit_width, rng=rng)
             else:
                 c1, c2 = p1.copy(), p2.copy()
 
-            if rng.random() < mutation_prob:
-                c1 = bit_flip_mutation(c1, bit_width=bit_width, rng=rng)
-            if rng.random() < mutation_prob:
-                c2 = bit_flip_mutation(c2, bit_width=bit_width, rng=rng)
+            if rng.random() < current_mutation_prob:
+                c1 = bit_flip_mutation(c1, bit_width=bit_width, rng=rng, progress=progress)
+            if rng.random() < current_mutation_prob:
+                c2 = bit_flip_mutation(c2, bit_width=bit_width, rng=rng, progress=progress)
 
             new_pop.append(c1)
             if len(new_pop) < pop_size:
@@ -265,6 +334,29 @@ def run_ga_bitwise(
         pop = np.array(new_pop, dtype=dtype)
         points = decode_gray_population(pop, bounds=bounds, bit_width=bit_width)
         fit = fitness(points)
+
+        best_idx = int(np.argmin(fit))
+        refined_bits, refined_point, refined_value = _refine_best_gray_individual(
+            pop[best_idx],
+            fitness=fitness,
+            bounds=bounds,
+            bit_width=bit_width,
+        )
+        if refined_value < fit[best_idx]:
+            pop[best_idx] = refined_bits
+            points[best_idx] = refined_point
+            fit[best_idx] = refined_value
+
+        if progress >= 0.75:
+            collapse_count = min(pop_size // 16, max(1, pop_size // 64))
+            sorted_idx = np.argsort(fit)
+            worst_idx = sorted_idx[-collapse_count:]
+            elite_pool = sorted_idx[:max(1, min(elite_size, collapse_count))]
+            for target_offset, target_idx in enumerate(worst_idx):
+                source_idx = elite_pool[target_offset % len(elite_pool)]
+                pop[target_idx] = pop[source_idx].copy()
+            points = decode_gray_population(pop, bounds=bounds, bit_width=bit_width)
+            fit = fitness(points)
 
         history_positions.append(points.copy())
         history_best.append(fit.min())
@@ -279,6 +371,6 @@ def run_ga_bitwise(
         "history_best": history_best,
         "history_best_point": history_best_point,
         "history_mean": history_mean,
-        "name": f"GA (bitwise, Gray, B={bit_width}, mid-cut)",
+        "name": f"GA (bitwise, Gray, B={bit_width}, adaptive)",
     }
     return result

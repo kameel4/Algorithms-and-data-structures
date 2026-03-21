@@ -314,7 +314,7 @@ def run_sweep(config):
     reference_value = _resolve_reference_value(config)
     seeds = _resolve_seeds(config["seeds"])
     bounds = tuple(float(value) for value in config["bounds"])
-    init_mode = str(config.get("init_mode", "random"))
+    default_init_mode = str(config.get("init_mode", "random"))
     success_config = dict(config["success"])
     success_config.setdefault("mode", "converged")
     success_config.setdefault("best_distance_tol", 1e-2)
@@ -333,6 +333,7 @@ def run_sweep(config):
                     "algorithm": algorithm,
                     "fixed": dict(experiment.get("fixed", {})),
                     "params": params,
+                    "init_mode": experiment.get("init_mode"),
                 }
             )
 
@@ -340,11 +341,14 @@ def run_sweep(config):
     total = len(expanded)
     for index, experiment in enumerate(expanded, start=1):
         runner = RUNNERS[experiment["algorithm"]]
+        experiment_init_mode = str(
+            experiment.get("init_mode", experiment.get("fixed", {}).get("init_mode", default_init_mode))
+        )
         runner_params = {
             **experiment["fixed"],
             **experiment["params"],
             "bounds": bounds,
-            "init_mode": init_mode,
+            "init_mode": experiment_init_mode,
             "fitness": fitness,
         }
         filtered_params = _filter_runner_kwargs(runner, runner_params)
@@ -393,7 +397,7 @@ def run_sweep(config):
         "reference_point": reference_point.tolist(),
         "reference_value": reference_value,
         "bounds": list(bounds),
-        "init_mode": init_mode,
+        "init_mode": default_init_mode,
         "seeds": seeds,
         "success": success_config,
         "summary": summaries,

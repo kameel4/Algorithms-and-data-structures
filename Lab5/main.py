@@ -19,7 +19,7 @@ def main():
     run_interface(
         fitness=fitness,
         objective_function=f_xy,
-        bounds=(-515, 515),
+        bounds=(-512, 512),
         interval=12,
     )
 

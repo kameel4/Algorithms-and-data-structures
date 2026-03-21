@@ -9,7 +9,7 @@ import numpy as np
 
 DEFAULT_HISTORY_DIR = Path(__file__).resolve().parent / "saved_histories"
 DEFAULT_OBJECTIVE_NAME = "eggholder"
-DEFAULT_REFERENCE_MIN = (515.0, 404.2319)
+DEFAULT_REFERENCE_MIN = (512.0, 404.2319)
 
 
 def _slugify(value):

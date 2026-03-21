@@ -15,7 +15,7 @@ except ImportError:
     from pso import run_pso
 
 
-def build_background(objective_function, bounds=(-515, 515), grid_n=300):
+def build_background(objective_function, bounds=(-512, 512), grid_n=300):
     low, high = bounds
     xs = np.linspace(low, high, grid_n)
     ys = np.linspace(low, high, grid_n)
@@ -28,7 +28,7 @@ def visualize_comparison(
     ga_result,
     pso_result,
     objective_function,
-    bounds=(-515, 515),
+    bounds=(-512, 512),
     interval=120,
 ):
     _, _, z_grid = build_background(
@@ -79,7 +79,7 @@ def visualize_comparison(
         ax.set_ylabel("y")
         ax.set_title(title)
 
-    true_min = np.array([515, 404.2319])
+    true_min = np.array([512, 404.2319])
     for ax in [ax_ga, ax_pso]:
         ax.scatter(true_min[0], true_min[1], marker="*", s=180, label="Reference min")
         ax.legend(loc="upper left", fontsize=9)
@@ -191,7 +191,7 @@ def _add_labeled_entry(frame, row, label, default_value, width=12):
 def run_interface(
     fitness,
     objective_function,
-    bounds=(-515, 515),
+    bounds=(-512, 512),
     interval=12,
 ):
     default_low, default_high = bounds
@@ -228,19 +228,25 @@ def run_interface(
     ttk.Radiobutton(mode_frame, text="Bitwise (Gray)", value="bitwise", variable=ga_mode_var).pack(anchor="w")
     row += 1
 
-    ga_pop_size_var, _ = _add_labeled_entry(panel, row, "GA pop_size", 512)
+    ttk.Label(panel, text="GA init_mode").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=2)
+    ga_init_mode_var = tk.StringVar(value="random")
+    ga_init_mode_box = ttk.Combobox(panel, textvariable=ga_init_mode_var, values=("random", "grid"), state="readonly", width=10)
+    ga_init_mode_box.grid(row=row, column=1, sticky="w", pady=2)
     row += 1
-    ga_generations_var, _ = _add_labeled_entry(panel, row, "GA generations", 100)
+
+    ga_pop_size_var, _ = _add_labeled_entry(panel, row, "GA pop_size", 1024)
     row += 1
-    ga_crossover_var, _ = _add_labeled_entry(panel, row, "GA crossover_prob", 0.9)
+    ga_generations_var, _ = _add_labeled_entry(panel, row, "GA generations", 54)
     row += 1
-    ga_mutation_var, _ = _add_labeled_entry(panel, row, "GA mutation_prob", 0.30)
+    ga_crossover_var, _ = _add_labeled_entry(panel, row, "GA crossover_prob", 0.8)
     row += 1
-    ga_elite_var, _ = _add_labeled_entry(panel, row, "GA elite_size", 8)
+    ga_mutation_var, _ = _add_labeled_entry(panel, row, "GA mutation_prob", 0.4)
     row += 1
-    ga_tournament_var, _ = _add_labeled_entry(panel, row, "GA tournament_k", 2)
+    ga_elite_var, _ = _add_labeled_entry(panel, row, "GA elite_size", 16)
     row += 1
-    ga_sigma_var, ga_sigma_entry = _add_labeled_entry(panel, row, "GA sigma0", 35.0)
+    ga_tournament_var, _ = _add_labeled_entry(panel, row, "GA tournament_k", 3)
+    row += 1
+    ga_sigma_var, ga_sigma_entry = _add_labeled_entry(panel, row, "GA sigma0", 75.0)
     row += 1
     ga_seed_var, _ = _add_labeled_entry(panel, row, "GA seed", 123)
     row += 1
@@ -269,6 +275,12 @@ def run_interface(
         value="standard",
         variable=pso_mode_var,
     ).pack(anchor="w")
+    row += 1
+
+    ttk.Label(panel, text="PSO init_mode").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=2)
+    pso_init_mode_var = tk.StringVar(value="grid")
+    pso_init_mode_box = ttk.Combobox(panel, textvariable=pso_init_mode_var, values=("random", "grid"), state="readonly", width=10)
+    pso_init_mode_box.grid(row=row, column=1, sticky="w", pady=2)
     row += 1
 
     pso_swarm_size_var, _ = _add_labeled_entry(panel, row, "PSO swarm_size", 512)
@@ -326,6 +338,7 @@ def run_interface(
                 raise ValueError("GA elite_size must be <= GA pop_size.")
 
             ga_mode = ga_mode_var.get()
+            ga_init_mode = ga_init_mode_var.get()
             if ga_mode == "bitwise":
                 ga_bit_width = _parse_int(ga_bit_width_var.get(), "GA bit width (B)", min_value=2, max_value=32)
                 ga_result = run_ga_bitwise(
@@ -339,6 +352,7 @@ def run_interface(
                     tournament_k=ga_tournament_k,
                     bit_width=ga_bit_width,
                     seed=ga_seed,
+                    init_mode=ga_init_mode,
                 )
             else:
                 ga_sigma0 = _parse_float(ga_sigma_var.get(), "GA sigma0", min_value=0.0)
@@ -353,6 +367,7 @@ def run_interface(
                     tournament_k=ga_tournament_k,
                     sigma0=ga_sigma0,
                     seed=ga_seed,
+                    init_mode=ga_init_mode,
                 )
 
             pso_swarm_size = _parse_int(pso_swarm_size_var.get(), "PSO swarm_size", min_value=2)
@@ -362,6 +377,7 @@ def run_interface(
             pso_vmax_ratio = _parse_float(pso_vmax_var.get(), "PSO vmax_ratio", min_value=0.0)
             pso_seed = _parse_int(pso_seed_var.get(), "PSO seed")
             pso_mode = pso_mode_var.get()
+            pso_init_mode = pso_init_mode_var.get()
 
             pso_result = run_pso(
                 fitness=fitness,
@@ -373,6 +389,7 @@ def run_interface(
                 vmax_ratio=pso_vmax_ratio,
                 use_constriction=(pso_mode == "constriction"),
                 seed=pso_seed,
+                init_mode=pso_init_mode,
             )
 
             print("=== Results ===")
