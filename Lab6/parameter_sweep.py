@@ -157,13 +157,36 @@ def _std_or_none(values: list[Any]) -> float | None:
 def _analyze_result(result: dict[str, Any], *, reference_best_length: float | None) -> dict[str, Any]:
     best_length = float(result["best_length"])
     gap = None if reference_best_length is None else best_length - reference_best_length
+    hit_reference = None
+    if reference_best_length is not None:
+        hit_reference = 1 if math.isclose(best_length, reference_best_length, rel_tol=0.0, abs_tol=1e-9) else 0
 
-    return {
+    analysis = {
         "best_length": best_length,
         "gap_to_reference": gap,
         "evaluations": int(result.get("evaluations", 0)),
         "elapsed_ms": float(result.get("elapsed_seconds", 0.0)) * 1000.0,
     }
+    if hit_reference is not None:
+        analysis["hit_reference"] = hit_reference
+
+    for key in (
+        "accepted_moves",
+        "improving_moves",
+        "temperature_steps",
+        "successful_tours",
+        "failed_tours",
+        "best_iteration",
+        "ant_count",
+        "elite_ants",
+    ):
+        value = result.get(key)
+        if value is None:
+            continue
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            analysis[key] = _clean_number(value)
+
+    return analysis
 
 
 def _build_summary(
@@ -174,7 +197,7 @@ def _build_summary(
     reference_best_length: float | None,
     seed_runs: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    return {
+    summary = {
         "experiment": experiment_name,
         "algorithm": algorithm,
         "graph": graph_name,
@@ -191,6 +214,21 @@ def _build_summary(
         "mean_runtime_ms": _mean_or_none([item["analysis"]["elapsed_ms"] for item in seed_runs]),
         "runs": seed_runs,
     }
+
+    extra_analysis_keys = sorted(
+        {
+            key
+            for item in seed_runs
+            for key in item["analysis"]
+            if key not in {"best_length", "gap_to_reference", "evaluations", "elapsed_ms"}
+        }
+    )
+    for key in extra_analysis_keys:
+        summary[f"mean_{key}"] = _mean_or_none(
+            [item["analysis"].get(key) for item in seed_runs]
+        )
+
+    return summary
 
 
 def _summary_sort_key(item: dict[str, Any]) -> tuple[float, float, float]:
@@ -218,20 +256,20 @@ def _format_metric(value: Any) -> str:
 
 def _flatten_summary_rows(summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     all_param_keys = sorted({key for item in summaries for key in item["params"]})
+    all_metric_keys = [
+        key
+        for key in sorted({key for item in summaries for key in item})
+        if key not in {"experiment", "algorithm", "graph", "params", "runs"}
+    ]
     rows = []
     for item in summaries:
         row = {
             "experiment": item["experiment"],
             "algorithm": item["algorithm"],
             "graph": item["graph"],
-            "mean_best_length": item["mean_best_length"],
-            "std_best_length": item["std_best_length"],
-            "best_best_length": item["best_best_length"],
-            "worst_best_length": item["worst_best_length"],
-            "mean_gap_to_reference": item["mean_gap_to_reference"],
-            "mean_evaluations": item["mean_evaluations"],
-            "mean_runtime_ms": item["mean_runtime_ms"],
         }
+        for key in all_metric_keys:
+            row[key] = item.get(key)
         for key in all_param_keys:
             row[key] = item["params"].get(key)
         rows.append(row)

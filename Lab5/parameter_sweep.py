@@ -18,7 +18,7 @@ try:
     from .pso import run_pso
 except ImportError:
     from ga import run_ga, run_ga_bitwise
-    from main import f_xy, fitness
+    from Lab1.mainLegacy import f_xy, fitness
     from pso import run_pso
 
 

@@ -55,7 +55,7 @@ def run_simulated_annealing(
     Run simulated annealing for a TSP graph.
 
     The algorithm follows the lab constraints:
-    - random initial solution,
+    - DFS-based initial Hamiltonian cycle,
     - energy = route length,
     - neighbor = swap two random cities,
     - geometric or Cauchy cooling.
@@ -78,7 +78,7 @@ def run_simulated_annealing(
 
     start_time = time.perf_counter()
 
-    current_route, current_length, initial_search_evaluations = _make_random_initial_route(graph, rng)
+    current_route, current_length, initial_search_evaluations = _make_dfs_initial_route(graph, rng)
     evaluations += initial_search_evaluations
 
     best_route = current_route.copy()
@@ -329,29 +329,114 @@ def _normalize_cooling_mode(cooling_mode: str) -> str:
     return aliases[normalized]
 
 
-def _make_random_initial_route(
+def _make_dfs_initial_route(
     graph: TSPGraph,
     rng: np.random.Generator,
     *,
-    max_attempts: int | None = None,
+    max_states: int | None = None,
 ) -> tuple[np.ndarray, float, int]:
-    indices = np.arange(graph.size, dtype=int)
-    attempts_limit = max_attempts or max(1_000, graph.size * 500)
+    distance_matrix = np.asarray(graph.distance_matrix, dtype=float)
+    ordered_neighbors = _build_dfs_neighbor_order(distance_matrix, rng)
+    out_degrees = np.array([len(neighbors) for neighbors in ordered_neighbors], dtype=int)
 
-    if not graph.directed and np.all(np.isfinite(graph.distance_matrix)):
-        candidate = rng.permutation(indices)
-        return candidate, _route_length(candidate, graph.distance_matrix), 1
+    if np.any(out_degrees == 0):
+        raise RuntimeError(
+            "Could not find a Hamiltonian cycle with DFS because at least one vertex "
+            "has no outgoing edges."
+        )
 
-    for attempt in range(1, attempts_limit + 1):
-        candidate = rng.permutation(indices)
-        candidate_length = _route_length(candidate, graph.distance_matrix)
-        if math.isfinite(candidate_length):
-            return candidate, candidate_length, attempt
+    search_limit = max_states or max(100_000, graph.size * graph.size * 25)
+    route = np.empty(graph.size, dtype=int)
+    visited = np.zeros(graph.size, dtype=bool)
+    explored_states = 0
+    search_exhausted = False
+
+    def dfs(depth: int, current: int) -> bool:
+        nonlocal explored_states, search_exhausted
+
+        explored_states += 1
+        if explored_states > search_limit:
+            search_exhausted = True
+            return False
+
+        if depth == graph.size:
+            return math.isfinite(distance_matrix[current, route[0]])
+
+        for next_vertex in ordered_neighbors[current]:
+            if visited[next_vertex]:
+                continue
+
+            if depth == graph.size - 1 and not math.isfinite(distance_matrix[next_vertex, route[0]]):
+                continue
+
+            visited[next_vertex] = True
+            route[depth] = next_vertex
+
+            if dfs(depth + 1, next_vertex):
+                return True
+
+            visited[next_vertex] = False
+
+            if search_exhausted:
+                return False
+
+        return False
+
+    for start_vertex in _ordered_start_vertices(out_degrees, rng):
+        visited.fill(False)
+        visited[start_vertex] = True
+        route[0] = start_vertex
+
+        if dfs(1, start_vertex):
+            cycle = route.copy()
+            return cycle, _route_length(cycle, distance_matrix), explored_states
+
+        if search_exhausted:
+            break
+
+    if search_exhausted:
+        raise RuntimeError(
+            "Could not find a Hamiltonian cycle with DFS within the search budget. "
+            "The graph may be too constrained or may not contain any feasible TSP tour."
+        )
 
     raise RuntimeError(
-        "Could not find a valid random Hamiltonian cycle for the current graph. "
+        "Could not find a Hamiltonian cycle with DFS. "
         "The graph may not contain any feasible TSP tour."
     )
+
+
+def _build_dfs_neighbor_order(
+    distance_matrix: np.ndarray,
+    rng: np.random.Generator,
+) -> list[np.ndarray]:
+    finite_edges = np.isfinite(distance_matrix)
+    np.fill_diagonal(finite_edges, False)
+    out_degrees = finite_edges.sum(axis=1).astype(int)
+    ordered_neighbors: list[np.ndarray] = []
+
+    for vertex in range(distance_matrix.shape[0]):
+        neighbors = np.flatnonzero(finite_edges[vertex])
+        if neighbors.size <= 1:
+            ordered_neighbors.append(neighbors)
+            continue
+
+        # Prefer constrained neighbors first, then lighter edges, then random tie-breaking.
+        tie_breaker = rng.permutation(neighbors.size)
+        order = np.lexsort((tie_breaker, distance_matrix[vertex, neighbors], out_degrees[neighbors]))
+        ordered_neighbors.append(neighbors[order])
+
+    return ordered_neighbors
+
+
+def _ordered_start_vertices(out_degrees: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    vertices = np.arange(out_degrees.size, dtype=int)
+    if vertices.size <= 1:
+        return vertices
+
+    tie_breaker = rng.permutation(vertices.size)
+    order = np.lexsort((tie_breaker, out_degrees))
+    return vertices[order]
 
 
 def _swap_two_cities(route: np.ndarray, rng: np.random.Generator) -> np.ndarray:
