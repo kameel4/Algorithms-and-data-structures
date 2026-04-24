@@ -1,4 +1,5 @@
 generated_graphs/
+tmp*/
 !cpp/
 !cpp/*.cpp
 !cpp/*.h

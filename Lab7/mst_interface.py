@@ -5,11 +5,15 @@ import re
 import subprocess
 import threading
 from pathlib import Path
-from tkinter import StringVar, Tk
-from tkinter import messagebox, ttk
+from tkinter import StringVar, Text, Tk
+from tkinter import filedialog, messagebox, ttk
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+
+from graph_utils import load_graph
+from harmonic_expansion import format_expansion_order, harmonic_expansion_order, save_expansion_order_csv
+from kruskal import kruskal_mst
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -135,6 +139,9 @@ class MstInterface:
         self.size_var = StringVar()
         self.repeats_var = StringVar(value="5")
         self.status_var = StringVar(value="Готово к запуску")
+        self.current_size: int | None = None
+        self.current_expansion_steps = []
+        self.current_expansion_graph_name = ""
 
         self._build_layout()
         self._populate_sizes()
@@ -182,8 +189,14 @@ class MstInterface:
         self.canvas = FigureCanvasTkAgg(self.figure, master=chart_frame)
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
-        table_frame = ttk.LabelFrame(self.root, text="Результаты по плотностям", padding=12)
-        table_frame.grid(row=2, column=0, padx=12, pady=(0, 12), sticky="nsew")
+        bottom_frame = ttk.Frame(self.root)
+        bottom_frame.grid(row=2, column=0, padx=12, pady=(0, 12), sticky="nsew")
+        bottom_frame.rowconfigure(0, weight=1)
+        bottom_frame.columnconfigure(0, weight=3)
+        bottom_frame.columnconfigure(1, weight=2)
+
+        table_frame = ttk.LabelFrame(bottom_frame, text="Результаты по плотностям", padding=12)
+        table_frame.grid(row=0, column=0, padx=(0, 8), sticky="nsew")
         table_frame.rowconfigure(0, weight=1)
         table_frame.columnconfigure(0, weight=1)
 
@@ -226,6 +239,27 @@ class MstInterface:
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
+        self.tree.bind("<<TreeviewSelect>>", self._handle_table_selection)
+
+        order_frame = ttk.LabelFrame(bottom_frame, text="Скрытый порядок расширения", padding=12)
+        order_frame.grid(row=0, column=1, sticky="nsew")
+        order_frame.rowconfigure(1, weight=1)
+        order_frame.columnconfigure(0, weight=1)
+
+        order_controls = ttk.Frame(order_frame)
+        order_controls.grid(row=0, column=0, columnspan=2, pady=(0, 8), sticky="ew")
+        ttk.Button(order_controls, text="Экспорт CSV", command=self._export_expansion_csv).grid(
+            row=0,
+            column=0,
+            sticky="w",
+        )
+
+        self.order_text = Text(order_frame, wrap="word", height=18, width=52)
+        order_scrollbar = ttk.Scrollbar(order_frame, orient="vertical", command=self.order_text.yview)
+        self.order_text.configure(yscrollcommand=order_scrollbar.set, state="disabled")
+        self.order_text.grid(row=1, column=0, sticky="nsew")
+        order_scrollbar.grid(row=1, column=1, sticky="ns")
+        self._set_order_text("Запустите алгоритмы и выберите строку плотности.")
 
     def _populate_sizes(self) -> None:
         sizes = [str(size) for size in get_available_sizes()]
@@ -264,8 +298,14 @@ class MstInterface:
         messagebox.showerror("Ошибка запуска", message)
 
     def _update_ui(self, size: int, rows: list[dict[str, int | float]], output_path: Path) -> None:
+        self.current_size = size
         self._draw_chart(size, rows)
         self._fill_table(rows)
+        children = self.tree.get_children()
+        if children:
+            self.tree.selection_set(children[0])
+            self.tree.focus(children[0])
+            self._handle_table_selection()
         self.run_button.config(state="normal")
         self.status_var.set(f"Готово: n={size}, CSV: {output_path.name}")
 
@@ -294,11 +334,13 @@ class MstInterface:
     def _fill_table(self, rows: list[dict[str, int | float]]) -> None:
         self.tree.delete(*self.tree.get_children())
         for row in rows:
+            density = int(row["density"])
             self.tree.insert(
                 "",
                 "end",
+                iid=str(density),
                 values=(
-                    int(row["density"]),
+                    density,
                     int(row["graph_edges"]),
                     int(row["mst_weight"]),
                     int(row["mst_edges"]),
@@ -308,6 +350,75 @@ class MstInterface:
                     f"{float(row['boruvka_time_ms']):.3f}",
                 ),
             )
+
+    def _handle_table_selection(self, event: object | None = None) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        self._show_expansion_order_for_density(int(selection[0]))
+
+    def _show_expansion_order_for_density(self, density: int) -> None:
+        if self.current_size is None:
+            self._set_order_text("Сначала запустите алгоритмы.")
+            return
+
+        graph_path = GRAPH_DIR / f"n{self.current_size}_p{density:02d}.json"
+        if not graph_path.exists():
+            self._set_order_text(f"Файл графа не найден: {graph_path.name}")
+            return
+
+        try:
+            n, edges = load_graph(graph_path)
+            total_weight, mst = kruskal_mst(n, edges)
+            steps = harmonic_expansion_order(n, mst, start=0)
+        except Exception as error:  # pragma: no cover
+            self.current_expansion_steps = []
+            self.current_expansion_graph_name = ""
+            self._set_order_text(f"Не удалось построить скрытый порядок: {error}")
+            return
+
+        self.current_expansion_steps = steps
+        self.current_expansion_graph_name = graph_path.stem
+        lines = [
+            f"Граф: {graph_path.name}",
+            "Стартовая вершина: 0",
+            f"Вес MST по Крускалу: {total_weight}",
+            f"Шагов расширения: {len(steps)}",
+            "",
+        ]
+        lines.extend(format_expansion_order(steps, limit=500))
+        self._set_order_text("\n".join(lines))
+
+    def _export_expansion_csv(self) -> None:
+        if not self.current_expansion_steps:
+            messagebox.showwarning("Экспорт CSV", "Сначала выберите строку с рассчитанным порядком расширения.")
+            return
+
+        default_name = f"{self.current_expansion_graph_name or 'expansion_order'}_order.csv"
+        file_name = filedialog.asksaveasfilename(
+            title="Экспорт порядка расширения",
+            defaultextension=".csv",
+            initialfile=default_name,
+            filetypes=(("CSV files", "*.csv"), ("All files", "*.*")),
+            initialdir=RESULTS_DIR if RESULTS_DIR.exists() else ROOT_DIR,
+        )
+        if not file_name:
+            return
+
+        csv_path = Path(file_name)
+        try:
+            save_expansion_order_csv(csv_path, self.current_expansion_steps)
+        except Exception as error:  # pragma: no cover
+            messagebox.showerror("Ошибка экспорта CSV", str(error))
+            return
+
+        self.status_var.set(f"Экспортирован CSV: {csv_path.name}")
+
+    def _set_order_text(self, text: str) -> None:
+        self.order_text.configure(state="normal")
+        self.order_text.delete("1.0", "end")
+        self.order_text.insert("1.0", text)
+        self.order_text.configure(state="disabled")
 
     def run(self) -> None:
         self.root.mainloop()
